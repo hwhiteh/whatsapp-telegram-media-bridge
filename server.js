@@ -6,12 +6,12 @@ require('dotenv').config();
 // ===== CONFIGURATION & CONSTANTS =====
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_USER_ID = process.env.TELEGRAM_USER_ID;
-const WHATSAPP_PHONE = process.env.WHATSAPP_PHONE || '+989309582296'; // Updated phone number
+const WHATSAPP_PHONE = process.env.WHATSAPP_PHONE || '+98XXXXXXXXXX'; // Placeholder phone number
 const MAX_FILE_SIZE_MB = 50; // Telegram limit for free bots
 const RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
 
-// Validate required env vars
+// Validate required environment variables
 if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_USER_ID) {
   console.error('❌ TELEGRAM_BOT_TOKEN and TELEGRAM_USER_ID are required in .env');
   process.exit(1);
@@ -20,7 +20,7 @@ if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_USER_ID) {
 // Initialize Telegram bot (no polling needed)
 const telegramBot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: false });
 
-// WhatsApp client with local auth
+// WhatsApp client with local authentication
 const whatsappClient = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: { headless: true }
@@ -30,13 +30,15 @@ const whatsappClient = new Client({
 const SUPPORTED_MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker'];
 
 // ===== UTILITY FUNCTIONS =====
+// Sanitize filename to avoid Telegram errors
 function sanitizeFileName(filename) {
   if (!filename) return `media_${Date.now()}.bin`;
   return filename
-    .replace(/[^a-zA-Z0-9._-]/g, '_') // Remove special chars
+    .replace(/[^a-zA-Z0-9._-]/g, '_') // Remove special characters
     .substring(0, 64); // Limit length
 }
 
+// Get appropriate Telegram send method based on media type
 function getTelegramSendMethod(type) {
   switch (type) {
     case 'image': return 'sendPhoto';
@@ -46,11 +48,13 @@ function getTelegramSendMethod(type) {
   }
 }
 
+// Estimate file size from base64 data (approximate, assumes padding)
 function estimateFileSize(base64Data) {
   const base64Length = base64Data.length;
-  return Math.round((base64Length * 3) / 4 / 1024 / 1024); // MB
+  return Math.round((base64Length * 3) / 4 / 1024 / 1024); // Size in MB
 }
 
+// Retry wrapper for Telegram API calls
 async function withRetry(operation, attempts = RETRY_ATTEMPTS) {
   for (let i = 0; i < attempts; i++) {
     try {
@@ -63,13 +67,14 @@ async function withRetry(operation, attempts = RETRY_ATTEMPTS) {
   }
 }
 
+// Send media to Telegram with type-specific method
 async function sendMediaToTelegram(mediaBuffer, mimeType, fileName, caption, mediaType) {
   const sendMethod = getTelegramSendMethod(mediaType);
   console.log(`📤 Sending ${mediaType} to Telegram (filename: ${fileName}, size: ${estimateFileSize(mediaBuffer)}MB)`);
 
   await withRetry(async () => {
     await telegramBot[sendMethod](TELEGRAM_USER_ID, Buffer.from(mediaBuffer, 'base64'), {
-      caption: caption.substring(0, 200), // Limit caption to 200 chars
+      caption: caption.substring(0, 200), // Limit caption to 200 characters
       contentType: mimeType,
       filename: fileName
     });
@@ -77,9 +82,10 @@ async function sendMediaToTelegram(mediaBuffer, mimeType, fileName, caption, med
   console.log('✅ Media sent to Telegram successfully');
 }
 
+// Generate caption with sender and timestamp
 function generateCaption(from, timestamp) {
-  const date = new Date(timestamp * 1000).toLocaleString('fa-IR');
-  return `رسانه از WhatsApp:\nاز: ${from}\nزمان: ${date}`.substring(0, 200);
+  const date = new Date(timestamp * 1000).toLocaleString('en-US');
+  return `Media from WhatsApp:\nFrom: ${from}\nTime: ${date}`.substring(0, 200);
 }
 
 // ===== CORE BUSINESS LOGIC =====
@@ -100,7 +106,7 @@ whatsappClient.on('message', async (msg) => {
       const media = await msg.downloadMedia();
       if (!media) {
         console.error('❌ Failed to download media');
-        msg.reply('❌ خطا در دانلود رسانه.');
+        msg.reply('❌ Error downloading media.');
         return;
       }
 
@@ -108,7 +114,7 @@ whatsappClient.on('message', async (msg) => {
       const fileSizeMB = estimateFileSize(media.data);
       if (fileSizeMB > MAX_FILE_SIZE_MB) {
         console.error(`❌ File too large: ${fileSizeMB}MB exceeds ${MAX_FILE_SIZE_MB}MB`);
-        msg.reply(`❌ فایل خیلی بزرگ است (${fileSizeMB}MB). حداکثر ${MAX_FILE_SIZE_MB}MB مجاز است.`);
+        msg.reply(`❌ File is too large (${fileSizeMB}MB). Maximum allowed is ${MAX_FILE_SIZE_MB}MB.`);
         return;
       }
 
@@ -126,21 +132,21 @@ whatsappClient.on('message', async (msg) => {
       );
 
       // Acknowledge in WhatsApp
-      msg.reply('✅ رسانه دریافت و به Telegram ارسال شد.');
+      msg.reply('✅ Media received and sent to Telegram.');
     } catch (error) {
       console.error(`❌ Error processing media: ${error.message}`, {
         type: msg.type,
         from: msg.from,
         errorStack: error.stack
       });
-      msg.reply('❌ خطا در پردازش رسانه.');
+      msg.reply('❌ Error processing media.');
     }
   }
 });
 
 // WhatsApp QR code handler
 whatsappClient.on('qr', (qr) => {
-  console.log('📱 Scan this QR with your WhatsApp app:');
+  console.log('📱 Scan this QR code with your WhatsApp app:');
   qrcode.generate(qr, { small: true });
 });
 
@@ -152,7 +158,7 @@ whatsappClient.on('ready', () => {
 
 // WhatsApp auth failure handler
 whatsappClient.on('auth_failure', (msg) => {
-  console.error('❌ WhatsApp auth failed:', msg);
+  console.error('❌ WhatsApp authentication failed:', msg);
 });
 
 // WhatsApp disconnection handler
